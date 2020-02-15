@@ -1,8 +1,6 @@
 library(caret)
 library(corrplot)
-library(dplyr)
-library(gbm)
-library(ggplot2)
+library(knitr)
 library(rattle)
 library(randomForest)
 
@@ -22,7 +20,7 @@ testing <- raw.training[-inTrain, ]
 t(data.frame(Training = dim(training), Testing = dim(testing), row.names = c("Observations", "Variables")))
 
 training <- training[ ,-c(1:7)]
-testing <- testing[,-c(1:7)]
+testing <- testing[ ,-c(1:7)]
 
 training <- training[ ,colSums(is.na(training)) == 0]
 testing <- testing[ ,colSums(is.na(testing)) == 0]
@@ -32,41 +30,42 @@ testing  <- testing[, -nearZeroVar(testing)]
 
 t(data.frame(Training = dim(training), Testing = dim(testing), row.names = c("Observations", "Variables")))
 
-strip_outliers <- function(v, upperz = 3, lowerz = -3, replace = NA) 
+strip.outliers <- function(v, upperz = 3, lowerz = -3, replace = NA) 
 {
         z <- scale(v) # gives z-scores for vector v
         v[!is.na(z) & (z>upperz | z<lowerz)] <- replace 
         return(v)
 }
-trainning <- data.frame(lapply(training[,-c(53)], strip_outliers))
+training.out.rm <- data.frame(lapply(training[,-c(53)], strip.outliers))
+training <- cbind(training.out.rm, classe = training$classe)
+summary(training)
+training.backup <- training
 
-preProcess()
-cor.mat <- abs(cor(training[, -53])); diag(cor.mat) <- 0
+cor.mat <- cor(training[, -53], use = "complete.obs"); diag(cor.mat) <- 0
 which(cor.mat > 0.9, arr.ind = TRUE)
-corrplot(cor.mat, order = "FPC", method = "color", type = "upper",
-         tl.cex = 0.6, tl.col = rgb(0, 0, 0))
+corrplot(cor.mat, order = "FPC", method = "color", type = "upper", tl.cex = 0.6, tl.col = rgb(0, 0, 0))
 highlyCorrelated <- findCorrelation(cor.mat, cutoff=0.9)
 names(training)[highlyCorrelated]
 
 trControl <- trainControl(method="cv", number=5, verboseIter = FALSE)
-model_cart <- train(classe ~ ., method="rpart", preProcess="knnImpute", data=training, trControl=trControl)
-model_rf <- train(classe ~ ., method="rf", preProcess="knnImpute", data=training, trControl=trControl)
-model_gbm <- train(classe ~ ., method="gbm", preProcess="knnImpute", data=training, trControl=trControl)
+modFit.cart <- train(classe ~ ., method="rpart", data=training, trControl=trControl, na.action = na.omit)
+modFit.rf <- train(classe ~ ., method="rf", data=training, trControl=trControl, na.action = na.omit)
+modFit.gbm <- train(classe ~ ., method="gbm", data=training, trControl=trControl, na.action = na.omit)
 
-predCART <- predict(model_cart, newdata=testing)
-cmCART <- confusionMatrix(predCART, testing$classe)
-predRF <- predict(model_rf, newdata=testing)
-cmRF <- confusionMatrix(predRF, testing$classe)
-predGBM <- predict(model_gbm, newdata=testing)
-cmGBM <- confusionMatrix(predGBM, testing$classe)
-data.frame(Model = c("CART", "RF", "GBM"), Accuracy = c(cmCART$overall[1], cmRF$overall[1], cmGBM$overall[1]))
+pred.cart <- predict(modFit.cart, newdata=testing)
+cm.cart <- confusionMatrix(predCART, testing$classe)
+pred.rf <- predict(modFit.rf, newdata=testing)
+cm.rf <- confusionMatrix(predRF, testing$classe)
+pred.gbm <- predict(modFit.gbm, newdata=testing)
+cm.gbm <- confusionMatrix(predGBM, testing$classe)
+data.frame(Model = c("CART", "RF", "GBM"), Accuracy = c(cm.cart$overall[1], cm.rf$overall[1], cm.gbm$overall[1]))
 
-varImp(model_rf)
+varImp(modFit.rf)
 
-validMod <- predict(model_rf, newdata = validation); validMod
+validMod <- predict(modFit.rf, newdata = validation); validMod
 
-fancyRpartPlot(model_cart$finalModel)
+fancyRpartPlot(modFit.cart$finalModel)
 
-plot(model_rf,main="Accuracy of Random forest model by number of predictors")
+plot(modFit.rf,main="Accuracy of Random forest model by number of predictors")
 
-plot(model_gbm)
+plot(modFit.gbm)

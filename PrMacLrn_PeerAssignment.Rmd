@@ -1,27 +1,26 @@
 ---
-title: "Study on the prediction of the ... "
+title: "Study on the prediction of the manner in which wearer did the exercise"
 author: "Thawatchai Phakwithoonchai"
 date: "2/10/2020"
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-library(caret)
-library(corrplot)
-library(gbm)
-library(ggplot2)
-library(rattle)
-library(randomForest)
+knitr::opts_chunk$set(echo = TRUE, tidy = TRUE, tidy.opts = list(width.cutoff = 60))
 ```
 
 # Executive Summary  
-The objective of study is to predict the manner in which 6 participants did the exercise. After getting, cleaning, and performing the data preparation. The models were built based on 3 algorithm that were (1) Classification Trees: CART, (2) Random Forests: RF, and (3) Generalized Boosted Regression Modeling: GBM. 
+The objective of study is to predict the manner in which 6 participants did the exercise. After getting, cleaning, and performing the data preparation. The models were built based on 3 algorithm that were (1) Classification Trees: CART, (2) Random Forests: RF, and (3) Generalized Boosted Regression Modeling: GBM. After all models were tested, it was found that the random forest model was provided the best accuracy compared with the others. Model validation was performed in the final section.
 
 # Getting, Cleaning, and Data Preparation  
 Training dataset was then seperated into 2 groups, which were (1) training set (70% of the training data), and (2) testing set (the 30% of remaining data), while the validation data was still unchanged.
 
 ``` {r loading and exploring the data}
+library(caret)
+library(corrplot)
+library(knitr)
+library(rattle)
+library(randomForest)
 trainURL = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
 testURL = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
 download.file(trainURL, "./training.csv")
@@ -58,19 +57,20 @@ t(data.frame(Training = dim(training), Testing = dim(testing), row.names = c("Ob
 Outliers would caused the significant model error, therefore, it was required to verify and replace with NA value before the models were built.
 
 ``` {r removing the outliers}
-strip_outliers <- function(v, upperz = 3, lowerz = -3, replace = NA) 
+strip.outliers <- function(v, upperz = 3, lowerz = -3, replace = NA) 
 {
         z <- scale(v)   # gives z-scores for vector v
         v[!is.na(z) & (z>upperz | z<lowerz)] <- replace
         return(v)       # replace outliers with NA
 }  
-trainning <- data.frame(lapply(training[,-c(53)], strip_outliers))
+training.out.rm <- data.frame(lapply(training[,-c(53)], strip.outliers))
+training <- cbind(training.out.rm, classe = training$classe)
 ```
 
-To minimize the predictors and reduce the noise, all (52) variables of the training were analyzed and performed the correlation plot as following:  
+To minimize the predictors and reduce the noise, all (52) variables of the training set were analyzed and performed the correlation plot.  
 
 ``` {r analyze and plot the correlation}
-cor.mat <- abs(cor(training[, -53]))
+cor.mat <- cor(training[, -53], use = "complete.obs")
 highlyCorrelated <- findCorrelation(cor.mat, cutoff=0.9)
 names(training)[highlyCorrelated]
 ```
@@ -80,27 +80,28 @@ The list showed the highly correlated variables. However, as the number of corre
 # Model Building with cross validation  
 There were 3 methods, would be applied to create the prediction models from the training dataset, while the highest model accuracy would be applied to the validation dataset, which will be also used for the quiz predictions.  
 Those 3 methods were: (1) Classification Trees: CART, (2) Random Forests: RF, and (3) Generalized Boosted Regression Modeling: GBM.  
-Note that a Confusion Matrix was determined at the end of each analysis to better visualize the accuracy of the models. Furthermore, the effects of overfitting could be limited, and improved the model efficiency by applying the cross-validation technique (5-folds), while the NA value was imputed by K-nearest neighbor (knn) method.
+Note that a Confusion Matrix was determined at the end of each analysis to better visualize the accuracy of the models. Furthermore, the effects of overfitting could be limited, and improved the model efficiency by applying the cross-validation technique (5-folds), while all NA value would be omitted.
 
-``` {r fitting the model}
+``` {r fitting the model, results = "hide"}
 trControl <- trainControl(method="cv", number=5, verboseIter = FALSE)
 # Classification Trees
-model_cart <- train(classe ~ ., method="rpart", preProcess="knnImpute", data=training, trControl=trControl)
+modFit.cart <- train(classe ~ ., method="rpart", data=training, trControl=trControl, na.action = na.omit)
 # Random Forests
-model_rf <- train(classe ~ ., method="rf", preProcess="knnImpute", data=training, trControl=trControl)
+modFit.rf <- train(classe ~ ., method="rf", data=training, trControl=trControl, na.action = na.omit)
 # Generalized Boosted Regression Modeling
-model_gbm <- train(classe ~ ., method="gbm", preProcess="knnImpute", data=training, trControl=trControl)
+modFit.gbm <- train(classe ~ ., method="gbm", data=training, trControl=trControl, na.action = na.omit)
 ```
 
-# Model Testing and Out-of-sample Error 
+# Model Testing and Out-of-sample Error  
+
 ``` {r Predicting model by using the testing data}
-predCART <- predict(model_cart, newdata=testing)
-cmCART <- confusionMatrix(predCART, testing$classe)
-predRF <- predict(model_rf, newdata=testing)
-cmRF <- confusionMatrix(predRF, testing$classe)
-predGBM <- predict(model_gbm, newdata=testing)
-cmGBM <- confusionMatrix(predGBM, testing$classe)
-data.frame(Model = c("CART", "RF", "GBM"), Accuracy = c(cmCART$overall[1], cmRF$overall[1], cmGBM$overall[1]))
+pred.cart <- predict(modFit.cart, newdata=testing)
+cm.cart <- confusionMatrix(pred.cart, testing$classe)
+pred.rf <- predict(modFit.rf, newdata=testing)
+cm.rf <- confusionMatrix(pred.rf, testing$classe)
+pred.gbm <- predict(modFit.gbm, newdata=testing)
+cm.gbm <- confusionMatrix(pred.gbm, testing$classe)
+data.frame(Model = c("CART", "RF", "GBM"), Accuracy = c(cm.cart$overall[1], cm.rf$overall[1], cm.gbm$overall[1]))
 ```
 
 According to the assessment of these 3 model fits and out-of-sample error testing results, it was apparently indicated that both RF and GBM were significant better than CART model. With random forests being slightly more accurate; therefore, it would be applied to the validation data.
@@ -108,32 +109,34 @@ According to the assessment of these 3 model fits and out-of-sample error testin
 # Validation
 
 ``` {r Validating the selected RF model}
-validMod <- predict(model_rf, newdata = validation); validMod
+validMod <- predict(modFit.rf, newdata = validation); validMod
 ```
 
-# Appendix  
+# Appendix Figures  
 
 *  Correlation plot
-``` {r Correlation plot, fig.align = center}
+
+``` {r Correlation plot, fig.align='center'}
 diag(cor.mat) <- 0
 which(cor.mat > 0.9, arr.ind = TRUE)
 corrplot(cor.mat, order = "FPC", method = "color", type = "upper",
          tl.cex = 0.6, tl.col = rgb(0, 0, 0))
 ```
 
-* Classification Trees Model
+* Classification Trees Model  
 
-``` {r Classification trees chart, fig.align = center}
-fancyRpartPlot(model_cart$finalModel)
+``` {r Classification trees chart, fig.align='center'}
+fancyRpartPlot(modFit.cart$finalModel)
 ```
 
-* Accuracy of Random Forest Model
+* Accuracy of Random Forest Model  
 
-``` {r Random Forest Model Accuracy with Predictors, fig.align = center}
-plot(model_rf,main="Accuracy of Random forest model by number of predictors")
+``` {r Random Forest Model Accuracy with Predictors, fig.align='center'}
+plot(modFit.rf,main="Accuracy of Random forest model by number of predictors")
 ```
 
-* Accuracy of Generalized Boosted Regression Modeling
-``` {r GBM Accuracy with Iterations, fig.align = center}
-plot(model_gbm)
+* Accuracy of Generalized Boosted Regression Modeling  
+
+``` {r GBM Accuracy with Iterations, fig.align='center'}
+plot(modFit.gbm)
 ```
